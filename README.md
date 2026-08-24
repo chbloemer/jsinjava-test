@@ -16,7 +16,7 @@ An experiment: can you run an **isomorphic (SSR + hydration) Vue 3 webapp entire
  └──────────────────────────────────────────────────────────────┘
 
                         RUNTIME (JVM only)
- ┌──────────────┐  view + model  ┌──────────────┐   state JSON    ┌─────────────────────────────┐
+ ┌──────────────┐  view + state  ┌──────────────┐   state JSON    ┌─────────────────────────────┐
  │ Spring Boot  │ ─────────────▶ │ VueSsrView-  │ ──────────────▶ │ GraalJS (org.graalvm.       │
  │ PageController│               │ Resolver /   │                 │ polyglot) runs the SSR      │
  │ (plain MVC)  │                │ VueSsrView   │ ◀────────────── │ bundle: SSR.render(page,st) │
@@ -36,6 +36,9 @@ Key points:
   state *directly* into the GraalJS context as a JSON string argument to
   `SSR.render(pageName, stateJson)`. The same JSON is inlined into the page as
   `window.__INITIAL_STATE__` so the client hydrates against identical data.
+- **Client state is opt-in.** Only the controller's dedicated `"state"` model
+  attribute is serialized to the browser; everything else in the model
+  (framework attributes, `_csrf` and friends) stays server-side by default.
 - **No Node.js at runtime.** GraalJS (`org.graalvm.polyglot:js`) runs on a plain
   Temurin JDK — no GraalVM distribution required. Node/npm/Vite are build-time
   tools only; the Gradle build invokes them and packages the bundles into the jar.
@@ -61,7 +64,7 @@ src/main/java/dev/example/jsinjava/
   VueSsrViewResolver.java Spring MVC ViewResolver: view name → registered page
   VueSsrView.java         View: "state" attribute → JSON → SSR markup + entry script
   PageTemplate.java       HTML shell split at its outlets, pure concatenation
-  PageController.java     GET / and /about → plain MVC: view name + model only
+  PageController.java     GET / and /about → plain MVC: view name + "state" attribute
   ApiController.java      GET /api/message → JSON (post-hydration REST demo)
 src/main/resources/
   templates/shell.html    shared HTML shell with ssr-/state-/entry-outlet
@@ -125,6 +128,7 @@ The jar is self-contained — it runs on a machine without Node installed.
 ## Status
 
 Experiment / proof of concept. The rendering path is production-shaped —
-context pool over a shared `Engine`, parallel renders, poisoned-context
-replacement, graceful shutdown that waits for in-flight renders — but the rest
-(observability, health checks, timeout tuning) is deliberately minimal.
+context pool over a shared `Engine`, parallel renders, broken-context
+replacement with lazy pool refill, graceful shutdown that waits for in-flight
+renders — but the rest (observability, health checks, timeout tuning) is
+deliberately minimal.
