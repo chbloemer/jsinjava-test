@@ -2,5 +2,6 @@ build/
 node_modules/
 .gradle/
 .idea/
+.serena/
 *.iml
 .DS_Store
