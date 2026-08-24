@@ -21,12 +21,12 @@ public class PageController {
 
     private final VueSsrRenderer renderer;
     private final ObjectMapper objectMapper;
-    private final String template;
+    private final PageTemplate template;
 
     PageController(VueSsrRenderer renderer, ObjectMapper objectMapper) {
         this.renderer = renderer;
         this.objectMapper = objectMapper;
-        this.template = loadTemplate();
+        this.template = PageTemplate.load();
     }
 
     @GetMapping(value = "/", produces = "text/html")
@@ -38,12 +38,7 @@ public class PageController {
                 0);
         String stateJson = objectMapper.writeValueAsString(state);
         String appHtml = renderer.render(stateJson);
-        String safeStateJson = escapeJsonForHtmlScript(stateJson);
-        // State first: appHtml is rendered from arbitrary data and could
-        // otherwise contain the state placeholder itself.
-        return template
-                .replace("<!--state-outlet-->", safeStateJson)
-                .replace("<!--ssr-outlet-->", appHtml);
+        return template.render(appHtml, escapeJsonForHtmlScript(stateJson));
     }
 
     /**
@@ -58,16 +53,44 @@ public class PageController {
         return json
                 .replace("&", "\\u0026")
                 .replace("<", "\\u003c")
-                .replace("\u2028", "\\u2028")
-                .replace("\u2029", "\\u2029");
+                .replace(" ", "\\u2028")
+                .replace(" ", "\\u2029");
     }
 
-    private static String loadTemplate() {
-        try {
-            return new ClassPathResource("templates/page.html")
-                    .getContentAsString(StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Cannot load page template", e);
+    /**
+     * The page template split once at its two placeholders. Rendering is pure
+     * concatenation, so inserted content is never rescanned — a payload that
+     * happens to contain a placeholder cannot hijack the other slot, and a
+     * missing placeholder fails at startup instead of silently not replacing.
+     */
+    private record PageTemplate(String beforeApp, String betweenAppAndState, String afterState) {
+
+        static PageTemplate load() {
+            String html = loadTemplateHtml();
+            String[] atApp = splitOnce(html, "<!--ssr-outlet-->");
+            String[] atState = splitOnce(atApp[1], "<!--state-outlet-->");
+            return new PageTemplate(atApp[0], atState[0], atState[1]);
+        }
+
+        String render(String appHtml, String safeStateJson) {
+            return beforeApp + appHtml + betweenAppAndState + safeStateJson + afterState;
+        }
+
+        private static String loadTemplateHtml() {
+            try {
+                return new ClassPathResource("templates/page.html")
+                        .getContentAsString(StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                throw new UncheckedIOException("Cannot load page template", e);
+            }
+        }
+
+        private static String[] splitOnce(String html, String placeholder) {
+            int at = html.indexOf(placeholder);
+            if (at < 0) {
+                throw new IllegalStateException("Template placeholder missing: " + placeholder);
+            }
+            return new String[] {html.substring(0, at), html.substring(at + placeholder.length())};
         }
     }
 }
