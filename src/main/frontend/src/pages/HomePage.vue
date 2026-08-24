@@ -33,5 +33,7 @@ async function loadMessage() {
         → {{ serverMessage.message }} ({{ serverMessage.serverTime }})
       </span>
     </p>
+
+    <nav><a href="/about">About this experiment →</a></nav>
   </main>
 </template>

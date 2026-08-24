@@ -12,18 +12,18 @@ An experiment: can you run an **isomorphic (SSR + hydration) Vue 3 webapp entire
  │  Vite builds the same Vue app twice:                         │
  │   • server-bundle.iife.js  (Vue + vue/server-renderer,       │
  │     bundled as IIFE exposing global `SSR.render`)            │
- │   • assets/app.js          (client entry, hydrates the DOM)  │
+ │   • assets/<page>.js       (one client entry per page)       │
  └──────────────────────────────────────────────────────────────┘
 
                         RUNTIME (JVM only)
- ┌──────────────┐   state JSON    ┌─────────────────────────────┐
- │ Spring Boot  │ ──────────────▶ │ GraalJS (org.graalvm.       │
- │ PageController│                │ polyglot) runs the SSR      │
- │              │ ◀────────────── │ bundle: SSR.render(state)   │
- └──────┬───────┘   HTML string   └─────────────────────────────┘
-        │
-        ▼
-   HTML page  =  SSR markup  +  window.__INITIAL_STATE__  +  <script src="/assets/app.js">
+ ┌──────────────┐  view + model  ┌──────────────┐   state JSON    ┌─────────────────────────────┐
+ │ Spring Boot  │ ─────────────▶ │ VueSsrView-  │ ──────────────▶ │ GraalJS (org.graalvm.       │
+ │ PageController│               │ Resolver /   │                 │ polyglot) runs the SSR      │
+ │ (plain MVC)  │                │ VueSsrView   │ ◀────────────── │ bundle: SSR.render(page,st) │
+ └──────────────┘                └──────┬───────┘   HTML string   └─────────────────────────────┘
+                                        │
+                                        ▼
+   HTML page  =  SSR markup  +  window.__INITIAL_STATE__  +  <script src="/assets/<page>.js">
         │
         ▼
    Browser hydrates with the same Vue app → interactive,
@@ -34,7 +34,7 @@ Key points:
 
 - **No REST call is needed for server-side rendering.** Java passes the initial
   state *directly* into the GraalJS context as a JSON string argument to
-  `SSR.render(stateJson)`. The same JSON is inlined into the page as
+  `SSR.render(pageName, stateJson)`. The same JSON is inlined into the page as
   `window.__INITIAL_STATE__` so the client hydrates against identical data.
 - **No Node.js at runtime.** GraalJS (`org.graalvm.polyglot:js`) runs on a plain
   Temurin JDK — no GraalVM distribution required. Node/npm/Vite are build-time
@@ -57,16 +57,21 @@ Key points:
 ```
 src/main/java/dev/example/jsinjava/
   Application.java        Spring Boot entry point
-  VueSsrRenderer.java     GraalJS context: loads polyfills + SSR bundle, renders
-  PageController.java     GET /  → SSR HTML with inlined initial state
+  VueSsrRenderer.java     GraalJS context pool over a shared Engine, renders
+  VueSsrViewResolver.java Spring MVC ViewResolver: view name → registered page
+  VueSsrView.java         View: "state" attribute → JSON → SSR markup + entry script
+  PageTemplate.java       HTML shell split at its outlets, pure concatenation
+  PageController.java     GET / and /about → plain MVC: view name + model only
   ApiController.java      GET /api/message → JSON (post-hydration REST demo)
 src/main/resources/
-  templates/page.html     HTML shell with <!--ssr-outlet--> / <!--state-outlet-->
+  templates/shell.html    shared HTML shell with ssr-/state-/entry-outlet
   ssr/ssr-polyfills.js    setTimeout/process shims GraalJS doesn't provide
 src/main/frontend/
-  src/App.vue             the demo component (counter + fetch demo)
-  src/entry-server.js     SSR entry: createSSRApp + renderToString
-  src/entry-client.js     client entry: createSSRApp + mount (hydrate)
+  src/pages/*.vue         page components (HomePage, AboutPage)
+  src/pages.js            page registry: view name → component
+  src/entry-server.js     SSR entry: SSR.render(pageName, stateJson)
+  src/entries/*.js        one client entry per page (hydrate that page)
+  src/hydrate.js          shared client bootstrap
   vite.config.ssr.mjs     lib/IIFE build → build/frontend/ssr
   vite.config.client.mjs  browser build  → build/frontend/client
 ```
@@ -87,6 +92,9 @@ Then:
   (check `curl -s localhost:8080/`: real markup, not an empty `<div id="app">`)
 - the counter button works after hydration, without a page reload
 - "Load message from server" fetches `GET /api/message` from Spring
+- <http://localhost:8080/about> is a second page: own Vue component, own
+  client entry (`/assets/about.js`), same shared shell — served by a plain
+  MVC controller returning `"about"`
 
 The jar is self-contained — it runs on a machine without Node installed.
 
@@ -103,10 +111,20 @@ The jar is self-contained — it runs on a machine without Node installed.
   formats.
 - **First render is slow** (~100s of ms): Truffle runs in interpreter mode on a
   stock JDK. Subsequent renders are in the low-ms range.
-- **Threading**: a polyglot `Context` is single-threaded. This experiment uses
-  one context with a `synchronized` render method; production would use a
-  context pool over a shared `Engine`.
+- **Threading**: a polyglot `Context` is single-threaded — concurrent access
+  throws `IllegalStateException`. `VueSsrRenderer` therefore keeps a fixed pool
+  of contexts (default: number of CPU cores, configurable via
+  `ssr.context-pool-size`); each render borrows one, so up to pool-size renders
+  run in parallel with no global lock. All contexts share one `Engine`, which
+  holds the parsed/JIT-compiled bundle code — additional contexts start warm
+  and add little memory. A render that fails on the host side gets its context
+  replaced with a fresh one instead of returning a possibly broken context to
+  the pool; a failure inside the page's own JavaScript is treated as an input
+  problem and the context stays pooled.
 
 ## Status
 
-Experiment / proof of concept — not production code.
+Experiment / proof of concept. The rendering path is production-shaped —
+context pool over a shared `Engine`, parallel renders, poisoned-context
+replacement, graceful shutdown that waits for in-flight renders — but the rest
+(observability, health checks, timeout tuning) is deliberately minimal.
