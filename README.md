@@ -46,6 +46,30 @@ Key points:
   before control returns to Java, so the result can be read synchronously via
   `promise.invokeMember("then", ...)`. See `VueSsrRenderer`.
 
+## Why not a separate Node SSR service?
+
+The usual alternative is a Node instance that renders over REST. The JSON
+data problems (64-bit IDs losing precision in JS, cycles in entity graphs,
+dates arriving as strings) are identical in both setups — they come from
+"data leaves the JVM as JSON", not from the rendering architecture. What the
+in-JVM approach actually removes:
+
+- **No network hop in the render path.** A Node service adds latency,
+  timeouts, retries and connection pools as failure modes for every page
+  view. Here the render is an in-process call.
+- **One deployment instead of two.** No second artifact with its own
+  lifecycle, monitoring, health checks, scaling and Node security patches.
+- **No version skew.** Backend and SSR bundle ship in the same jar; the
+  backend can never send a state shape the renderer doesn't know yet.
+- **One JSON boundary instead of two.** The exact same string goes to
+  `SSR.render` and to `window.__INITIAL_STATE__`, so SSR markup and
+  hydration data are consistent by construction — nothing to keep in sync
+  between a backend response and an SSR service response.
+
+The trade-off: engine-embedding quirks (polyfills, IIFE bundle format,
+interpreter speed — see gotchas below) and the bundle must not depend on
+Node APIs (`fs`, `net`, ...).
+
 ## Stack
 
 | Layer | Tech |
