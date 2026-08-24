@@ -35,7 +35,7 @@ def npmBuildClient = tasks.register('npmBuildClient', com.github.gradle.node.npm
     dependsOn tasks.npmInstall
     args = ['run', 'build:client']
     inputs.dir('src/main/frontend/src')
-    inputs.files('src/main/frontend/package.json', 'src/main/frontend/vite.config.client.mjs')
+    inputs.files('src/main/frontend/package.json', 'src/main/frontend/package-lock.json', 'src/main/frontend/vite.config.client.mjs')
     outputs.dir(layout.buildDirectory.dir('frontend/client'))
 }
 
@@ -43,7 +43,7 @@ def npmBuildSsr = tasks.register('npmBuildSsr', com.github.gradle.node.npm.task.
     dependsOn tasks.npmInstall
     args = ['run', 'build:ssr']
     inputs.dir('src/main/frontend/src')
-    inputs.files('src/main/frontend/package.json', 'src/main/frontend/vite.config.ssr.mjs')
+    inputs.files('src/main/frontend/package.json', 'src/main/frontend/package-lock.json', 'src/main/frontend/vite.config.ssr.mjs')
     outputs.dir(layout.buildDirectory.dir('frontend/ssr'))
 }
 

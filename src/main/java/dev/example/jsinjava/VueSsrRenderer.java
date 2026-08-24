@@ -73,16 +73,20 @@ public class VueSsrRenderer {
     }
 
     private Source loadClasspathSource(String path) {
-        try (Reader reader = new InputStreamReader(
-                getClass().getClassLoader().getResourceAsStream(path), StandardCharsets.UTF_8)) {
+        var stream = getClass().getClassLoader().getResourceAsStream(path);
+        if (stream == null) {
+            throw new IllegalStateException("Classpath resource not found: " + path);
+        }
+        try (Reader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
             return Source.newBuilder("js", reader, path).build();
         } catch (IOException e) {
             throw new UncheckedIOException("Cannot load " + path, e);
         }
     }
 
+    // Same monitor as render() so the context cannot be closed mid-render.
     @PreDestroy
-    void shutdown() {
+    synchronized void shutdown() {
         if (context != null) {
             context.close();
         }

@@ -6,13 +6,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.RestController;
 
 import tools.jackson.databind.ObjectMapper;
 
-@RestController
+// Serves an HTML page, not a REST resource — hence @Controller + @ResponseBody.
+@Controller
 public class PageController {
 
     record InitialState(String greeting, List<String> items, int count) {
@@ -37,11 +38,17 @@ public class PageController {
                 0);
         String stateJson = objectMapper.writeValueAsString(state);
         String appHtml = renderer.render(stateJson);
-        // Escape </script> sequences so the inlined JSON cannot break out of its script tag.
-        String safeStateJson = stateJson.replace("</", "<\\/");
+        // Escape sequences that would let the inlined JSON escape its script tag:
+        // "</" covers "</script>", "<!--" would switch the parser into the
+        // script-data-escaped state. Both stay valid inside JS string literals.
+        String safeStateJson = stateJson
+                .replace("</", "<\\/")
+                .replace("<!--", "<\\!--");
+        // State first: appHtml is rendered from arbitrary data and could
+        // otherwise contain the state placeholder itself.
         return template
-                .replace("<!--ssr-outlet-->", appHtml)
-                .replace("<!--state-outlet-->", safeStateJson);
+                .replace("<!--state-outlet-->", safeStateJson)
+                .replace("<!--ssr-outlet-->", appHtml);
     }
 
     private static String loadTemplate() {
