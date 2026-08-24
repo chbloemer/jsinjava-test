@@ -123,7 +123,12 @@ The jar is self-contained — it runs on a machine without Node installed.
   and add little memory. A render that fails on the host side gets its context
   replaced with a fresh one instead of returning a possibly broken context to
   the pool; a failure inside the page's own JavaScript is treated as an input
-  problem and the context stays pooled.
+  problem and the context stays pooled. Requests are served on virtual threads
+  (`spring.threads.virtual.enabled=true`): rendering stays CPU-bound on the
+  pool, but a request waiting for a free context parks a cheap virtual thread
+  instead of holding one of Tomcat's platform threads — under bursts the queue
+  forms at the pool, not at the servlet thread pool, and endpoints that don't
+  render keep responding.
 
 ## Status
 
