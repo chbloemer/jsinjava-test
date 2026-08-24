@@ -50,14 +50,14 @@ public class PageController {
      * Makes JSON safe to embed as a JavaScript expression in an HTML script
      * element. Escaping every less-than sign prevents case-insensitive
      * {@code </script>} end tags and HTML comment openers from being parsed as
-     * markup. The other escapes avoid legacy parser ambiguities and keep the
-     * result valid on JavaScript engines that treat line separators specially.
+     * markup; escaping ampersands keeps the payload inert if it ever ends up
+     * in a non-script context. The line-separator escapes keep the result
+     * valid on JavaScript engines that treat them specially.
      */
     static String escapeJsonForHtmlScript(String json) {
         return json
                 .replace("&", "\\u0026")
                 .replace("<", "\\u003c")
-                .replace(">", "\\u003e")
                 .replace("\u2028", "\\u2028")
                 .replace("\u2029", "\\u2029");
     }
