@@ -1,0 +1,58 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.1'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'com.github.node-gradle.node' version '7.1.0'
+}
+
+group = 'dev.example'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.graalvm.polyglot:polyglot:25.2.4'
+    implementation 'org.graalvm.polyglot:js:25.2.4'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+node {
+    download = false
+    nodeProjectDir = file('src/main/frontend')
+}
+
+def npmBuildClient = tasks.register('npmBuildClient', com.github.gradle.node.npm.task.NpmTask) {
+    dependsOn tasks.npmInstall
+    args = ['run', 'build:client']
+    inputs.dir('src/main/frontend/src')
+    inputs.files('src/main/frontend/package.json', 'src/main/frontend/vite.config.client.mjs')
+    outputs.dir(layout.buildDirectory.dir('frontend/client'))
+}
+
+def npmBuildSsr = tasks.register('npmBuildSsr', com.github.gradle.node.npm.task.NpmTask) {
+    dependsOn tasks.npmInstall
+    args = ['run', 'build:ssr']
+    inputs.dir('src/main/frontend/src')
+    inputs.files('src/main/frontend/package.json', 'src/main/frontend/vite.config.ssr.mjs')
+    outputs.dir(layout.buildDirectory.dir('frontend/ssr'))
+}
+
+tasks.named('processResources') {
+    dependsOn npmBuildClient, npmBuildSsr
+    from(layout.buildDirectory.dir('frontend/client')) { into 'static' }
+    from(layout.buildDirectory.dir('frontend/ssr')) { into 'ssr' }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
