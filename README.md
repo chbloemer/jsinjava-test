@@ -73,7 +73,8 @@ src/main/frontend/
 
 ## Build & run
 
-Requirements: JDK 21, Node ≥ 20 (build time only).
+Requirements: JDK 21 and Node 20.19+ or 22.12+ (build time only, matching
+Vite 7's supported Node releases).
 
 ```sh
 ./gradlew build          # builds frontend (npm install + 2 vite builds) + jar + tests

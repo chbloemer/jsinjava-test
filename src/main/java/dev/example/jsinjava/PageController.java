@@ -38,17 +38,28 @@ public class PageController {
                 0);
         String stateJson = objectMapper.writeValueAsString(state);
         String appHtml = renderer.render(stateJson);
-        // Escape sequences that would let the inlined JSON escape its script tag:
-        // "</" covers "</script>", "<!--" would switch the parser into the
-        // script-data-escaped state. Both stay valid inside JS string literals.
-        String safeStateJson = stateJson
-                .replace("</", "<\\/")
-                .replace("<!--", "<\\!--");
+        String safeStateJson = escapeJsonForHtmlScript(stateJson);
         // State first: appHtml is rendered from arbitrary data and could
         // otherwise contain the state placeholder itself.
         return template
                 .replace("<!--state-outlet-->", safeStateJson)
                 .replace("<!--ssr-outlet-->", appHtml);
+    }
+
+    /**
+     * Makes JSON safe to embed as a JavaScript expression in an HTML script
+     * element. Escaping every less-than sign prevents case-insensitive
+     * {@code </script>} end tags and HTML comment openers from being parsed as
+     * markup. The other escapes avoid legacy parser ambiguities and keep the
+     * result valid on JavaScript engines that treat line separators specially.
+     */
+    static String escapeJsonForHtmlScript(String json) {
+        return json
+                .replace("&", "\\u0026")
+                .replace("<", "\\u003c")
+                .replace(">", "\\u003e")
+                .replace("\u2028", "\\u2028")
+                .replace("\u2029", "\\u2029");
     }
 
     private static String loadTemplate() {
